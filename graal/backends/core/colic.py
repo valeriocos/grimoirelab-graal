@@ -135,6 +135,7 @@ class CoLic(Graal):
         :param commit: a Perceval commit item
         """
         analysis = []
+        files_to_process = []
 
         for committed_file in commit['files']:
 
@@ -148,9 +149,19 @@ class CoLic(Graal):
             if not GraalRepository.exists(local_path):
                 continue
 
-            license_info = self.analyzer.analyze(local_path)
-            license_info.update({'file_path': file_path})
-            analysis.append(license_info)
+            if self.analyzer_kind == NOMOS:
+                license_info = self.analyzer.analyze(local_path)
+                license_info.update({'file_path': file_path})
+                analysis.append(license_info)
+            else:
+                files_to_process.append((file_path, local_path))
+
+        if files_to_process:
+            local_paths = [f[1] for f in files_to_process]
+            analysis = self.analyzer.analyze(local_paths)
+
+            for i in range(len(analysis['files'])):
+                analysis['files'][i]['file_path'] = files_to_process[i][0]
 
         return analysis
 
@@ -189,7 +200,7 @@ class LicenseAnalyzer:
           'licenses': [..]
         }
         """
-        kwargs = {'file_path': file_path}
+        kwargs = {'file_paths': file_path}
         analysis = self.analyzer.analyze(**kwargs)
 
         return analysis

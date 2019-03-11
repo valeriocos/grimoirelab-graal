@@ -43,6 +43,7 @@ class ScanCode(Analyzer):
             raise GraalError(cause="executable path %s not valid" % exec_path)
 
         self.exec_path = exec_path
+        _ = subprocess.check_output([self.exec_path, '--help']).decode("utf-8")
 
     def analyze(self, **kwargs):
         """Add information about license
@@ -51,20 +52,38 @@ class ScanCode(Analyzer):
 
         :returns result: dict of the results of the analysis
         """
-        result = {'licenses': []}
-        file_path = kwargs['file_path']
+        result = {'files': []}
 
         try:
-            msg = subprocess.check_output([self.exec_path, '--json-pp', '-', '--license', file_path]).decode("utf-8")
+            exec_path = self.exec_path.replace('scancode-toolkit/scancode', 'scancode-toolkit/etc/scripts/scancli.py')
+            cmd_scancli = ['python3', exec_path]
+            cmd_scancli.extend(kwargs['file_paths'])
+            msg = subprocess.check_output(cmd_scancli).decode("utf-8")
         except subprocess.CalledProcessError as e:
-            raise GraalError(cause="Scancode failed at %s, %s" % (file_path, e.output.decode("utf-8")))
+            raise GraalError(cause="Scancode failed at %s, %s" % (' '.join(kwargs['file_paths']),
+                                                                  e.output.decode("utf-8")))
         finally:
             subprocess._cleanup()
 
-        licenses_raw = json.loads(msg)
-        if 'files' not in licenses_raw:
-            return result
+        output_content = ''
+        outputs_json = []
+        for line in msg.split('\n'):
+            if line == '':
+                if output_content:
+                    output_json = json.loads(output_content)[1:]
+                    outputs_json.append(output_json)
+                    output_content = ''
+                else:
+                    continue
+            else:
+                output_content += line
 
-        result['licenses'] = licenses_raw['files'][0]['licenses']
+        if output_content:
+            output_json = json.loads(output_content)[1:]
+            outputs_json.append(output_json)
+
+        for output_json in outputs_json:
+            file_info = output_json[0]['files'][0]
+            result['files'].append(file_info)
 
         return result
